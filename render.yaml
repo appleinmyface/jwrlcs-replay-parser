@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: jwrlcs-replay-parser
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ADMIN_PROFILE_USER_COLUMN
+        value: user_id
+      - key: MAX_REPLAY_BYTES
+        value: "10485760"
+      - key: MAX_SERIES_BYTES
+        value: "73400320"
+      - key: MAX_REPLAY_FILES
+        value: "7"
