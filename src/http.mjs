@@ -115,7 +115,7 @@ export async function handleRequest(request, response) {
     return response.end();
   }
   if (request.method === "GET" && request.url === "/health") {
-    return sendJson(response, 200, { ok: true, service: "jwrlcs-replay-parser", contract_version: "0.2.0" });
+    return sendJson(response, 200, { ok: true, service: "jwrlcs-replay-parser", contract_version: "0.3.0" });
   }
   if (request.method !== "POST" || request.url?.split("?")[0] !== "/parse-series") {
     return sendJson(response, 404, { error: "NOT_FOUND", message: "Route not found." }, cors);

@@ -1,0 +1,854 @@
+{
+  "contract_version": "0.3.0",
+  "parser_engine": {
+    "name": "@jwrlcs/boxcars-wasm",
+    "version": "0.1.0",
+    "rust_boxcars_version": "0.12.0",
+    "metric_version": "jwrlcs-scouting-v1",
+    "per_game_validation": true
+  },
+  "review_status": "needs_review",
+  "game_count": 1,
+  "provisional_color_score": {
+    "blue_wins": 0,
+    "orange_wins": 1
+  },
+  "series_warnings": [],
+  "required_review": {
+    "scheduled_match_id": null,
+    "confirm_team_mapping_for_every_game": true,
+    "unresolved_player_count": 0
+  },
+  "games": [
+    {
+      "game_number": 1,
+      "parser_version": "0.3.0",
+      "replay_hash_sha256": "43e8cb7070b47f201b19fd4bdbc497bba2dfcfc67b341e9a19e94474fef8660c",
+      "replay_id": "B5C5C4D211F1C1FBE09ECBA5A4E06F15",
+      "source_file_name": "B5C5C4D211F1C1FBE09ECBA5A4E06F15.replay",
+      "replay_name": "eclipse vs aspect",
+      "sequence_hint": null,
+      "played_at_local": "2026-10-07T03:03:45",
+      "played_at_raw": "2026-10-07 03-03-45",
+      "map_code": "EuroStadium_Night_P",
+      "match_type": "Private",
+      "team_size": 4,
+      "team_mapping": {
+        "blue_season_team_id": null,
+        "orange_season_team_id": null
+      },
+      "final_score": {
+        "blue": 1,
+        "orange": 2
+      },
+      "winner_color": "orange",
+      "replay_format": {
+        "major_version": 868,
+        "minor_version": 34,
+        "net_version": 12,
+        "game_type": "TAGame.Replay_Soccar_TA",
+        "game_version": 30,
+        "build_version": "261001.2867.529371",
+        "replay_version": 8
+      },
+      "timing": {
+        "overtime": null,
+        "overtime_seconds": null,
+        "regulation_clock_seconds": 300,
+        "game_clock_seconds": null,
+        "playing_duration_seconds": null,
+        "zero_second_play_seconds": null,
+        "pause_seconds": null,
+        "ended_by": "incomplete",
+        "clock_precision_seconds": 1,
+        "playing_duration_precision_seconds": 0.001,
+        "metric_version": "jwrlcs-timing-v2"
+      },
+      "advanced_metrics": {
+        "schema_version": "1.0.0",
+        "validation_status": "partial",
+        "network_decode_status": "success",
+        "metric_availability": {
+          "demolitions": {
+            "status": "verified",
+            "source": "network_demolition_event",
+            "metric_version": "jwrlcs-demolitions-v2",
+            "reason": null,
+            "validation_scope": "extraction_and_attribution",
+            "independent_reference_status": "not_compared"
+          },
+          "overtime": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2"
+          },
+          "overtime_clock_duration": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2"
+          },
+          "playing_duration": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "Active-state intervals are diagnostics only until kickoff, zero-clock, pause, and transition semantics are independently validated."
+          },
+          "overtime_seconds": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "No verified final overtime clock boundary."
+          },
+          "regulation_clock_seconds": {
+            "status": "verified",
+            "source": "network_game_clock",
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "Maximum observed regulation clock value; not elapsed playing time or proof of a complete recording."
+          },
+          "game_clock_seconds": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "Arithmetic clock reference only; never actual playing duration."
+          },
+          "playing_duration_seconds": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "Active-state intervals include kickoff clock-stopped time and unvalidated boundaries."
+          },
+          "zero_second_play_seconds": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "A sampled zero-clock-to-state-transition interval is not yet validated as actual zero-second play."
+          },
+          "pause_seconds": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2",
+            "reason": "The stop-countdown signal is not validated as complete pause coverage."
+          },
+          "ended_by": {
+            "status": "unavailable",
+            "source": null,
+            "metric_version": "jwrlcs-timing-v2"
+          },
+          "boost": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires validated boost-byte scaling, pad classification, and per-car state integration."
+          },
+          "movement": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires validated trajectory sampling, surface state, and movement thresholds."
+          },
+          "positioning": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires synchronized ball/car trajectories and documented field-zone definitions."
+          },
+          "possession": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires a validated touch and possession-change model."
+          },
+          "events": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires reliable player attribution and definitions for touches, clears, centers, aerial hits, and epic saves."
+          },
+          "tactical": {
+            "status": "unsupported",
+            "source": null,
+            "metric_version": "jwrlcs-scouting-v1",
+            "reason": "Requires validated models for passes, interceptions, bumps, kickoffs, and challenges."
+          }
+        },
+        "diagnostics": {
+          "demolition_events_counted": 11,
+          "demolition_events_detected": 11,
+          "recorded_demo_counter_mismatches": [],
+          "repeated_demolition_updates_ignored": 2,
+          "non_gameplay_demolition_updates_ignored": 8,
+          "unresolved_demolition_events": 0,
+          "player_identities_resolved": 7,
+          "player_identities_expected": 7,
+          "timing": {
+            "reached_zero": true,
+            "overtime_attribute_observed": false,
+            "pause_signal_observed": false,
+            "terminal_boundary_observed": false,
+            "last_frame_time": 384.3357,
+            "clock_samples": 336,
+            "game_states": [
+              "WaitingForPlayers",
+              "Countdown",
+              "Active",
+              "PostGoalScored",
+              "ReplayPlayback"
+            ],
+            "active_state_interval_seconds": 257.386,
+            "active_intervals": [
+              {
+                "start_time": 26.856075,
+                "end_time": 103.972664,
+                "interval_seconds": 77.117,
+                "start_clock": 300,
+                "end_clock": 225,
+                "first_ball_hit_time": 28.748089,
+                "before_first_touch_seconds": 1.892
+              },
+              {
+                "start_time": 114.813576,
+                "end_time": 289.89026,
+                "interval_seconds": 175.077,
+                "start_clock": 225,
+                "end_clock": 52,
+                "first_ball_hit_time": 116.75179,
+                "before_first_touch_seconds": 1.938
+              },
+              {
+                "start_time": 305.8942,
+                "end_time": 311.08734,
+                "interval_seconds": 5.193,
+                "start_clock": 52,
+                "end_clock": 49,
+                "first_ball_hit_time": 307.80093,
+                "before_first_touch_seconds": 1.907
+              }
+            ],
+            "zero_clock_transition_interval_seconds": null,
+            "stop_countdown_signal_interval_seconds": null,
+            "diagnostic_only": true
+          }
+        }
+      },
+      "players": [
+        {
+          "replay_name": "Albert",
+          "platform": "steam",
+          "platform_user_id": "76561198261838712",
+          "team_color": "blue",
+          "participation": {
+            "header_team_index": 0,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 5
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 148,
+            "goals": 0,
+            "assists": 0,
+            "saves": 0,
+            "shots": 0
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 2,
+            "demolitions_taken": 2,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        },
+        {
+          "replay_name": "ttvCupboard",
+          "platform": "epic",
+          "platform_user_id": "20869c1f3a2c4c8ebaccc994f6db205e",
+          "team_color": "blue",
+          "participation": {
+            "header_team_index": 0,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 5
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 385,
+            "goals": 1,
+            "assists": 0,
+            "saves": 1,
+            "shots": 3
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 2,
+            "demolitions_taken": 1,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        },
+        {
+          "replay_name": "Sean",
+          "platform": "steam",
+          "platform_user_id": "76561198264755236",
+          "team_color": "blue",
+          "participation": {
+            "header_team_index": 0,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 7
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 239,
+            "goals": 0,
+            "assists": 0,
+            "saves": 1,
+            "shots": 2
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 1,
+            "demolitions_taken": 3,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        },
+        {
+          "replay_name": "Lebyrinnn",
+          "platform": "epic",
+          "platform_user_id": "362af5d33932495f9fc2a893506462cf",
+          "team_color": null,
+          "participation": {
+            "header_team_index": -1,
+            "status": "no_car_observed",
+            "team_assignment_observed": false,
+            "network_pri_generations": 1,
+            "car_actor_generations": 0
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 0,
+            "goals": 0,
+            "assists": 0,
+            "saves": 0,
+            "shots": 0
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": null,
+            "demolitions_taken": null,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "unavailable",
+              "source": null,
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": [
+                "NO_CAR_OBSERVED"
+              ]
+            }
+          }
+        },
+        {
+          "replay_name": "Heynamesjr",
+          "platform": "epic",
+          "platform_user_id": "7ff52dc4257a40f6b8af3b6a254ccc0f",
+          "team_color": "orange",
+          "participation": {
+            "header_team_index": 1,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 5
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 196,
+            "goals": 0,
+            "assists": 0,
+            "saves": 1,
+            "shots": 2
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 1,
+            "demolitions_taken": 2,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        },
+        {
+          "replay_name": "zev",
+          "platform": "steam",
+          "platform_user_id": "76561198094213201",
+          "team_color": "orange",
+          "participation": {
+            "header_team_index": 1,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 4
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 400,
+            "goals": 1,
+            "assists": 1,
+            "saves": 1,
+            "shots": 2
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 2,
+            "demolitions_taken": 0,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        },
+        {
+          "replay_name": "apple",
+          "platform": "steam",
+          "platform_user_id": "76561198202555409",
+          "team_color": "orange",
+          "participation": {
+            "header_team_index": 1,
+            "status": "car_observed",
+            "team_assignment_observed": true,
+            "network_pri_generations": 1,
+            "car_actor_generations": 6
+          },
+          "mapped_player_id": null,
+          "identity_status": "stable_id_available",
+          "identity_source": "header",
+          "statistics": {
+            "score": 331,
+            "goals": 1,
+            "assists": 0,
+            "saves": 1,
+            "shots": 3
+          },
+          "advanced_statistics": {
+            "demolitions_inflicted": 3,
+            "demolitions_taken": 3,
+            "is_mvp": null,
+            "boost": {
+              "amount_collected": null,
+              "amount_consumed": null,
+              "amount_stolen": null,
+              "large_pads_collected": null,
+              "small_pads_collected": null,
+              "average_level": null,
+              "seconds_empty": null
+            },
+            "movement": {
+              "average_speed_uu_per_second": null,
+              "seconds_supersonic": null,
+              "seconds_ground": null,
+              "seconds_air": null,
+              "powerslide_count": null,
+              "powerslide_seconds": null
+            },
+            "positioning": {
+              "seconds_defensive_half": null,
+              "seconds_offensive_half": null,
+              "average_distance_to_ball_uu": null,
+              "average_distance_to_teammates_uu": null,
+              "possession_seconds": null
+            },
+            "events": {
+              "touches": null,
+              "clears": null,
+              "centers": null,
+              "epic_saves": null,
+              "aerial_hits": null,
+              "passes": null,
+              "interceptions": null,
+              "bumps_inflicted": null,
+              "bumps_taken": null,
+              "kickoff_wins": null,
+              "kickoff_losses": null,
+              "challenges_won": null,
+              "challenges_lost": null
+            }
+          },
+          "metric_availability": {
+            "mvp": {
+              "status": "unsupported",
+              "source": null,
+              "metric_version": "jwrlcs-scouting-v1",
+              "reason": "No genuine MVP award was found in the verified replay data; score rank is not used as a substitute."
+            },
+            "demolitions": {
+              "status": "verified",
+              "source": "network_demolition_event",
+              "metric_version": "jwrlcs-demolitions-v2",
+              "validation_scope": "extraction_and_attribution",
+              "independent_reference_status": "not_compared",
+              "warnings": []
+            }
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "code": "NOT_3V3",
+          "severity": "warning",
+          "message": "Expected 3v3; replay reports team size 4."
+        },
+        {
+          "code": "HEADER_ENTRY_WITHOUT_CAR",
+          "severity": "warning",
+          "message": "Lebyrinnn is retained, but no car is linked to this account in the decoded recording; review its participation instead of treating missing metrics as zero.",
+          "replay_player_name": "Lebyrinnn"
+        },
+        {
+          "code": "OVERTIME_STATUS_UNVERIFIED",
+          "severity": "warning",
+          "message": "The network data does not contain enough evidence to verify whether the game reached overtime."
+        },
+        {
+          "code": "PLAYING_DURATION_UNVERIFIED",
+          "severity": "warning",
+          "message": "Active-state intervals include kickoff clock-stopped time and unvalidated transition boundaries; actual playing duration is withheld.",
+          "ended_by": "incomplete"
+        },
+        {
+          "code": "UNKNOWN_GAME_STATE",
+          "severity": "warning",
+          "message": "Playing duration was withheld because the replay used unrecognized game states.",
+          "state_names": [
+            "ReplayPlayback",
+            "WaitingForPlayers"
+          ]
+        }
+      ],
+      "review_status": "needs_review"
+    }
+  ]
+}

@@ -26,8 +26,20 @@ test("serves the health contract", async () => {
     assert.deepEqual(await response.json(), {
       ok: true,
       service: "jwrlcs-replay-parser",
-      contract_version: "0.2.0",
+      contract_version: "0.3.0",
     });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("denies unauthenticated parsing without reading or saving a replay", async () => {
+  const server = createReplayServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/parse-series`, { method: "POST" });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error, "AUTH_REQUIRED");
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

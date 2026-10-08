@@ -1,0 +1,8 @@
+{
+  "name": "@jwrlcs/boxcars-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "main": "boxcars_js.js",
+  "types": "boxcars_js.d.ts",
+  "files": ["boxcars_js.js", "boxcars_js_bg.wasm", "boxcars_js.d.ts", "PROVENANCE.md", "BOXCARS_LICENSE.txt"]
+}
