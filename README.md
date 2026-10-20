@@ -2,6 +2,8 @@
 
 This service powers the GHL `/admin/replay-import` review page. It accepts an authenticated multipart upload at `POST /parse-series`, parses Rocket League `.replay` files with released Rust `boxcars` 0.12.0 through the included `@jwrlcs/boxcars-wasm` 0.1.0 binding, and returns the backward-compatible JWRLCS `0.3.0` contract.
 
+See [the overtime integration handoff](docs/OVERTIME_INTEGRATION.md) for the packaged `jwrlcs-overtime-v1` extension, availability, real-fixture limitations, and subsequent storage work. This source package has not been deployed.
+
 Version 0.3.0 retains the five existing scoreboard statistics and adds guarded network-stream extraction for stable player identity, demolitions, overtime, and timing. Unsupported or unverified values are `null`; they are never fabricated as zero.
 
 It does not write games, statistics, match results, or standings.

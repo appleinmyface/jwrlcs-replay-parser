@@ -160,7 +160,8 @@ test("synthetic pause and forfeit intervals stay diagnostic, not official durati
     ] },
   };
   const result = analyzeNetworkReplay(decoded, []);
-  assert.equal(result.timing.overtime, false);
+  // Forfeit/clock evidence without an explicit negative OT state cannot prove regulation.
+  assert.equal(result.timing.overtime, null);
   assert.equal(result.timing.ended_by, "forfeit");
   assert.equal(result.timing.playing_duration_seconds, null);
   assert.equal(result.timing.pause_seconds, null);

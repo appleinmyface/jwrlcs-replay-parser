@@ -1,3 +1,5 @@
+> Current overtime implementation: see [OVERTIME_INTEGRATION.md](OVERTIME_INTEGRATION.md), [OVERTIME_VALIDATION_REPORT.md](OVERTIME_VALIDATION_REPORT.md), and OVERTIME_FIXTURE_RESULTS.json. The earlier results below are retained history, not validation of the new OT rules.
+
 # Replay-parser v0.3.0 final validation — 2026-10-08 UTC
 
 ## Final disposition and new current-build validation
