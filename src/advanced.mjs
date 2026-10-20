@@ -1,3 +1,5 @@
+import { createOvertimeAnalyzer, unavailableOvertime, TIMING_METRIC_VERSION, OVERTIME_METRIC_VERSION } from "./overtime.mjs";
+
 const ACTIVE_STATE = "Active";
 const KNOWN_NON_PLAYING_STATES = new Set([
   "Countdown",
@@ -9,7 +11,7 @@ const KNOWN_NON_PLAYING_STATES = new Set([
 
 export const SCOUTING_METRIC_VERSION = "jwrlcs-scouting-v1";
 export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v3";
-export const TIMING_METRIC_VERSION = "jwrlcs-timing-v2";
+export { TIMING_METRIC_VERSION, OVERTIME_METRIC_VERSION };
 
 const DEFERRED_REASONS = {
   boost: "Requires validated boost-byte scaling, pad classification, and per-car state integration.",
@@ -84,6 +86,7 @@ function emptyAdvancedStatistics() {
   return {
     demolitions_inflicted: null,
     demolitions_taken: null,
+    overtime_goals: null,
     is_mvp: null,
     boost: {
       amount_collected: null,
@@ -239,10 +242,6 @@ function createTimingAnalyzer(decoded) {
   let zeroSecondEndedAt = null;
   let reachedZero = false;
   let overtimeObserved = false;
-  let overtimeClockMaximum = null;
-  let regulationClockMaximum = null;
-  let forfeitDetected = false;
-  let matchEndedDetected = false;
   let terminalClosedAt = null;
   const unknownStates = new Set();
   const stateHistory = [];
@@ -320,11 +319,6 @@ function createTimingAnalyzer(decoded) {
       reachedZero = true;
       if (firstZeroAt === null) firstZeroAt = time;
     }
-    if (overtimeObserved || (reachedZero && value > 0)) {
-      overtimeClockMaximum = Math.max(overtimeClockMaximum ?? 0, value);
-    } else {
-      regulationClockMaximum = Math.max(regulationClockMaximum ?? 0, value);
-    }
   }
 
   function processUpdate(objectName, attribute, time) {
@@ -345,180 +339,59 @@ function createTimingAnalyzer(decoded) {
       setPaused(attribute.Boolean, time);
     } else if (objectName === "TAGame.GameEvent_Soccar_TA:bMatchEnded"
         && attribute?.Boolean === true) {
-      matchEndedDetected = true;
       closeActive(time);
       terminalClosedAt = time;
     } else if (objectName === "TAGame.GameEvent_Team_TA:bForfeit"
         && attribute?.Boolean === true) {
-      forfeitDetected = true;
       closeActive(time);
       terminalClosedAt = time;
     }
   }
 
-  function finish({ finalBlueScore, finalOrangeScore, lastFrameTime }) {
+  function finish({ lastFrameTime }) {
     if (paused && pauseStartedAt !== null && terminalClosedAt !== null) {
       pauseSeconds += Math.max(0, terminalClosedAt - pauseStartedAt);
     }
-
-    const finalScoreIsDecisive = Number.isInteger(finalBlueScore)
-      && Number.isInteger(finalOrangeScore)
-      && finalBlueScore !== finalOrangeScore;
-    let overtime = null;
-    if (overtimeObserved) {
-      overtime = true;
-    } else if (forfeitDetected && !reachedZero) {
-      overtime = false;
-    } else if (matchEndedDetected && reachedZero
-        && finalScoreIsDecisive && overtimeClockMaximum === null) {
-      overtime = false;
-    }
-
-    const endedInClosedState = activeStartedAt === null
-      && (stateName !== ACTIVE_STATE || terminalClosedAt !== null);
-    const completeOvertimeGoal = overtime === true
-      && finalScoreIsDecisive
-      && endedInClosedState
-      && stateName === "PostGoalScored";
-    const reliableTerminal = forfeitDetected
-      || matchEndedDetected
-      || completeOvertimeGoal;
-    // Active-state time includes kickoff movement while the game clock is
-    // stopped. Terminal closure alone does not validate its physical playing
-    // duration semantics. Keep the candidate in diagnostics, never as an
-    // official duration or a per-five-minute denominator.
-    const playingDurationReliable = false;
-    const overtimeSeconds = overtime === false ? 0
-      : completeOvertimeGoal && overtimeClockMaximum !== null
-        ? overtimeClockMaximum : null;
-
-    let endedBy = "incomplete";
-    if (forfeitDetected) endedBy = "forfeit";
-    else if (completeOvertimeGoal) endedBy = "overtime_goal";
-    else if (matchEndedDetected && overtime === false) endedBy = "regulation";
-    else if (overtime === false && reachedZero && finalScoreIsDecisive) endedBy = "regulation_clock_expired";
-
-    let zeroSecondPlaySeconds = null;
-    if (firstZeroAt !== null && zeroSecondEndedAt !== null) {
-      zeroSecondPlaySeconds = roundSeconds(Math.max(0, zeroSecondEndedAt - firstZeroAt));
-    }
-
-    const warnings = [];
-    if (overtime === null) {
-      warnings.push(warning(
-        "OVERTIME_STATUS_UNVERIFIED",
-        "The network data does not contain enough evidence to verify whether the game reached overtime.",
-      ));
-    }
-    if (!playingDurationReliable) {
-      warnings.push(warning(
-        "PLAYING_DURATION_UNVERIFIED",
-        "Active-state intervals include kickoff clock-stopped time and unvalidated transition boundaries; actual playing duration is withheld.",
-        { ended_by: endedBy },
-      ));
-    }
-    if (unknownStates.size > 0) {
-      warnings.push(warning(
-        "UNKNOWN_GAME_STATE",
-        "Playing duration was withheld because the replay used unrecognized game states.",
-        { state_names: [...unknownStates].sort() },
-      ));
-    }
-    if (pauseSuspected) {
-      warnings.push(warning(
-        "POSSIBLE_UNMARKED_PAUSE",
-        "Playing duration was withheld because the live game clock stopped without a recognized pause signal.",
-      ));
-    }
-
+    const warnings = [warning(
+      "PLAYING_DURATION_UNVERIFIED",
+      "Active-state intervals include kickoff clock-stopped time and unvalidated transition boundaries; actual playing duration is withheld.",
+    )];
+    if (unknownStates.size > 0) warnings.push(warning(
+      "UNKNOWN_GAME_STATE",
+      "Playing duration was withheld because the replay used unrecognized game states.",
+      { state_names: [...unknownStates].sort() },
+    ));
+    if (pauseSuspected) warnings.push(warning(
+      "POSSIBLE_UNMARKED_PAUSE",
+      "Playing duration was withheld because the live game clock stopped without a recognized pause signal.",
+    ));
+    const unavailable = (reason) => ({ status: "unavailable", source: null,
+      metric_version: TIMING_METRIC_VERSION, reason });
     return {
       value: {
-        overtime,
-        overtime_seconds: overtimeSeconds,
-        regulation_clock_seconds: regulationClockMaximum,
-        game_clock_seconds: overtimeSeconds === null || regulationClockMaximum === null
-          ? null
-          : regulationClockMaximum + overtimeSeconds,
-        playing_duration_seconds: playingDurationReliable ? roundSeconds(activeSeconds) : null,
-        zero_second_play_seconds: null,
-        pause_seconds: null,
-        ended_by: endedBy,
-        clock_precision_seconds: 1,
-        playing_duration_precision_seconds: 0.001,
+        playing_duration_seconds: null, zero_second_play_seconds: null, pause_seconds: null,
+        clock_precision_seconds: 1, playing_duration_precision_seconds: 0.001,
         metric_version: TIMING_METRIC_VERSION,
       },
       availability: {
-        overtime: {
-          status: overtime === null ? "unavailable" : "verified",
-          source: overtimeObserved ? "network_attribute" : overtime === false ? "validated_game_clock" : null,
-          metric_version: TIMING_METRIC_VERSION,
-        },
-        overtime_clock_duration: {
-          status: overtimeSeconds === null ? "unavailable" : "verified",
-          source: overtimeSeconds === null ? null : "network_game_clock",
-          metric_version: TIMING_METRIC_VERSION,
-        },
-        playing_duration: {
-          status: playingDurationReliable ? "verified" : "unavailable",
-          source: playingDurationReliable ? "network_game_state_intervals" : null,
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "Active-state intervals are diagnostics only until kickoff, zero-clock, pause, and transition semantics are independently validated.",
-        },
-        overtime_seconds: {
-          status: overtimeSeconds === null ? "unavailable" : "verified",
-          source: overtimeSeconds === null ? null : "network_game_clock",
-          metric_version: TIMING_METRIC_VERSION,
-          reason: overtimeSeconds === null ? "No verified final overtime clock boundary." : null,
-        },
-        regulation_clock_seconds: {
-          status: regulationClockMaximum === null ? "unavailable" : "verified",
-          source: regulationClockMaximum === null ? null : "network_game_clock",
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "Maximum observed regulation clock value; not elapsed playing time or proof of a complete recording.",
-        },
-        game_clock_seconds: {
-          status: overtimeSeconds === null || regulationClockMaximum === null ? "unavailable" : "verified",
-          source: overtimeSeconds === null || regulationClockMaximum === null ? null : "derived_clock_sum",
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "Arithmetic clock reference only; never actual playing duration.",
-        },
-        playing_duration_seconds: {
-          status: "unavailable",
-          source: null,
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "Active-state intervals include kickoff clock-stopped time and unvalidated boundaries.",
-        },
-        zero_second_play_seconds: {
-          status: "unavailable",
-          source: null,
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "A sampled zero-clock-to-state-transition interval is not yet validated as actual zero-second play.",
-        },
-        pause_seconds: {
-          status: "unavailable",
-          source: null,
-          metric_version: TIMING_METRIC_VERSION,
-          reason: "The stop-countdown signal is not validated as complete pause coverage.",
-        },
-        ended_by: {
-          status: reliableTerminal ? "verified" : "unavailable",
-          source: forfeitDetected || matchEndedDetected ? "network_terminal_attribute"
-            : completeOvertimeGoal ? "network_overtime_goal_state" : null,
-          metric_version: TIMING_METRIC_VERSION,
-        },
+        playing_duration: unavailable("Active-state intervals remain diagnostic until physical timing semantics are independently validated."),
+        playing_duration_seconds: unavailable("Kickoff, zero-clock, pause, and transition intervals are not a validated physical playing duration."),
+        zero_second_play_seconds: unavailable("Clock-to-phase intervals are not independently validated physical zero-second play."),
+        pause_seconds: unavailable("Stop-countdown is not validated as complete technical-pause coverage."),
       },
       warnings,
       diagnostics: {
         reached_zero: reachedZero,
         overtime_attribute_observed: overtimeObserved,
         pause_signal_observed: pauseSignalObserved,
-        terminal_boundary_observed: reliableTerminal,
+        terminal_boundary_observed: terminalClosedAt !== null,
         last_frame_time: Number.isFinite(lastFrameTime) ? lastFrameTime : null,
         clock_samples: clockHistory.length,
         game_states: [...new Set(stateHistory.map((item) => item.state))],
         active_state_interval_seconds: roundSeconds(activeSeconds),
         active_intervals: activeIntervals,
-        zero_clock_transition_interval_seconds: zeroSecondPlaySeconds,
+        zero_clock_transition_interval_seconds: firstZeroAt !== null && zeroSecondEndedAt !== null
+          ? roundSeconds(Math.max(0, zeroSecondEndedAt - firstZeroAt)) : null,
         stop_countdown_signal_interval_seconds: pauseSignalObserved ? roundSeconds(pauseSeconds) : null,
         diagnostic_only: true,
       },
@@ -529,6 +402,7 @@ function createTimingAnalyzer(decoded) {
 }
 
 function unavailableResult(players, code, message) {
+  const unavailableOt = unavailableOvertime(message);
   const playerResults = players.map(() => ({
     identity: null,
     advanced_statistics: emptyAdvancedStatistics(),
@@ -545,6 +419,8 @@ function unavailableResult(players, code, message) {
         metric_version: DEMOLITION_METRIC_VERSION,
         warnings: [code],
       },
+      overtime_goals: { status: "unavailable", source: null,
+        metric_version: OVERTIME_METRIC_VERSION, reason: message },
     },
   }));
   return {
@@ -571,6 +447,7 @@ function unavailableResult(players, code, message) {
           reason: message,
         }])),
         ...deferredMetricAvailability(),
+        ...unavailableOt.availability,
       },
       diagnostics: null,
     },
@@ -586,6 +463,7 @@ function unavailableResult(players, code, message) {
       clock_precision_seconds: 1,
       playing_duration_precision_seconds: 0.001,
       metric_version: TIMING_METRIC_VERSION,
+      ...unavailableOt.value,
     },
     warnings: [warning(code, message)],
   };
@@ -608,6 +486,8 @@ export function analyzeNetworkReplay(decoded, players) {
   const objects = decoded.objects ?? [];
   const registry = createActorRegistry(objects);
   const timing = createTimingAnalyzer(decoded);
+  const overtimeAnalyzer = createOvertimeAnalyzer(decoded, { teamColorFromActor, uniqueIdentity });
+  let overtimeAnalysisFailed = false;
   const demolitionEvents = [];
   const postGoalCollisionCandidates = [];
   const seenPostGoalVictims = new Set();
@@ -616,7 +496,7 @@ export function analyzeNetworkReplay(decoded, players) {
   let excludedNonGameplayDemolitions = 0;
   let selfDemolitionEvents = 0;
 
-  for (const frame of frames) {
+  for (const [frameIndex, frame] of frames.entries()) {
     const counterChanges = new Map();
     for (const newActor of frame.new_actors ?? []) registry.register(newActor, frame.time);
 
@@ -661,6 +541,11 @@ export function analyzeNetworkReplay(decoded, players) {
         });
         actor.recordedDemosTaken = Math.max(actor.recordedDemosTaken ?? 0, update.attribute.Int);
       }
+    }
+
+    if (!overtimeAnalysisFailed) {
+      try { overtimeAnalyzer.processFrame(frame, frameIndex, registry); }
+      catch { overtimeAnalysisFailed = true; }
     }
 
     for (const update of frame.updated_actors ?? []) {
@@ -911,11 +796,35 @@ export function analyzeNetworkReplay(decoded, players) {
     }
   });
 
-  const timingResult = timing.finish({
-    finalBlueScore: decoded.properties?.Team0Score ?? 0,
-    finalOrangeScore: decoded.properties?.Team1Score ?? 0,
+  const phaseTimingResult = timing.finish({
     lastFrameTime: frames.at(-1)?.time,
   });
+  const reviewedPlayers = players.map((player, index) => ({
+    stable_key: matches[index]?.identity?.stable_key ?? null,
+    platform: player.platform === "unknown" ? matches[index]?.identity?.platform : player.platform,
+    platform_user_id: player.platform_user_id ?? matches[index]?.identity?.platform_user_id ?? null,
+    replay_name: player.replay_name,
+    participating: participantCars[index].size > 0,
+  }));
+  let overtimeResult;
+  try {
+    if (overtimeAnalysisFailed) throw new Error("Overtime signal analysis unavailable");
+    overtimeResult = overtimeAnalyzer.finish(reviewedPlayers);
+  } catch {
+    overtimeResult = {
+      ...unavailableOvertime("OVERTIME_ANALYSIS_FAILED: OT evidence could not be safely reconciled; other metrics are unaffected."),
+      playerByKey: new Map(), diagnostics: null,
+      warnings: [warning("OVERTIME_ANALYSIS_FAILED", "Overtime analysis failed; OT metrics remain null while independently available demolition statistics are preserved.")],
+    };
+  }
+  const timingResult = {
+    value: { ...phaseTimingResult.value, ...overtimeResult.value },
+    availability: { ...phaseTimingResult.availability, ...overtimeResult.availability },
+    warnings: [...phaseTimingResult.warnings, ...overtimeResult.warnings],
+    diagnostics: { ...phaseTimingResult.diagnostics,
+      terminal_boundary_observed: phaseTimingResult.diagnostics.terminal_boundary_observed
+        || overtimeResult.availability.overtime_goal.status === "verified" },
+  };
   warnings.push(...timingResult.warnings);
 
   const playerResults = players.map((player, index) => {
@@ -926,6 +835,8 @@ export function analyzeNetworkReplay(decoded, players) {
       advancedStatistics.demolitions_inflicted = inflicted[index];
       advancedStatistics.demolitions_taken = taken[index];
     }
+    const overtimeGoals = overtimeResult.playerByKey.get(reviewedPlayers[index].stable_key);
+    advancedStatistics.overtime_goals = overtimeGoals?.value ?? null;
     return {
       identity: actor?.identity
         ? {
@@ -943,6 +854,10 @@ export function analyzeNetworkReplay(decoded, players) {
       },
       advanced_statistics: advancedStatistics,
       metric_availability: {
+        overtime_goals: overtimeGoals?.availability ?? {
+          status: "unavailable", source: null, metric_version: OVERTIME_METRIC_VERSION,
+          reason: "NO_UNIQUE_STABLE_PARTICIPANT_IDENTITY",
+        },
         mvp: {
           status: "unsupported",
           source: null,
@@ -1004,6 +919,7 @@ export function analyzeNetworkReplay(decoded, players) {
         player_identities_resolved: matches.filter(Boolean).length,
         player_identities_expected: players.length,
         timing: timingResult.diagnostics,
+        overtime: overtimeResult.diagnostics,
       },
     },
     timing: timingResult.value,

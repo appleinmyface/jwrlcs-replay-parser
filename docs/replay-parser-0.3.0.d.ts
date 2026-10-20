@@ -14,13 +14,19 @@ export interface MetricAvailability {
   metric_version: string;
   reason?: string | null;
   warnings?: string[];
-  validation_scope?: "extraction_and_attribution";
+  validation_scope?: "extraction_and_attribution" | "explicit_signal_and_reconciled_game_records";
   independent_reference_status?: "not_compared";
+  definition?: string;
 }
 
 export interface TimingMetricAvailability {
   overtime: MetricAvailability;
   overtime_seconds: MetricAvailability;
+  /** Added by jwrlcs-overtime-v1; optional when consuming older 0.3.0 results. */
+  overtime_winner_color?: MetricAvailability;
+  overtime_goal?: MetricAvailability;
+  overtime_goal_scorer?: MetricAvailability;
+  overtime_goal_clock_seconds?: MetricAvailability;
   regulation_clock_seconds: MetricAvailability;
   game_clock_seconds: MetricAvailability;
   playing_duration_seconds: MetricAvailability;
@@ -61,6 +67,8 @@ export interface ReplayPlayer {
     demolitions_inflicted: number | null;
     /** Event-derived zero is distinct from absent recorded counter evidence. */
     demolitions_taken: number | null;
+    /** Added by jwrlcs-overtime-v1. Missing/unknown is never coerced to zero. */
+    overtime_goals?: number | null;
     is_mvp: boolean | null;
     boost: {
       amount_collected: number | null;
@@ -105,7 +113,45 @@ export interface ReplayPlayer {
   metric_availability: {
     mvp: MetricAvailability;
     demolitions: MetricAvailability;
+    overtime_goals?: MetricAvailability;
   };
+}
+
+export interface OvertimeGoal {
+  /** Zero-based index in decoded.network_frames.frames. */
+  frame: number;
+  /** Replay timestamp in seconds, rounded to 0.001; not elapsed game time. */
+  replay_seconds: number;
+  /** Direct integer game-clock sample near the goal; not a physical duration. */
+  clock_seconds: number | null;
+  scoring_team_color: "blue" | "orange";
+  score_before: { blue: number; orange: number };
+  score_after: { blue: number; orange: number };
+  credited_scorer: { platform: string; platform_user_id: string; replay_name: string } | null;
+  /** Physical own-goal classification is not validated by this implementation. */
+  own_goal: null;
+  attribution_status: "credited_player" | "unresolved";
+}
+
+export interface OvertimeDiagnostics {
+  metric_version: "jwrlcs-overtime-v1";
+  implicit_fallback_enabled: false;
+  independent_reference_status: "not_compared";
+  full_decoded_recording: boolean;
+  explicit_overtime_signals: Array<{ frame: number; replay_seconds: number; value: boolean; actor_key: string; phase: string | null }>;
+  phase_transitions: Array<{ frame: number; replay_seconds: number; before: string | null; after: string | null }>;
+  pause_signals: Array<{ frame: number; replay_seconds: number; value: boolean; phase: string | null }>;
+  recording_gaps: Array<{ before_frame: number; after_frame: number; start_replay_seconds: number; end_replay_seconds: number; phase_before: string | null; phase_after: string | null }>;
+  clock_samples: Array<{ frame: number; replay_seconds: number; value: number; overtime_flag: boolean | null; phase: string | null; paused: boolean }>;
+  terminal_signals: Array<Record<string, unknown>>;
+  team_score_changes: Array<Record<string, unknown>>;
+  goal_counter_changes: Array<Record<string, unknown>>;
+  header_goal_records: Array<Record<string, unknown>>;
+  overtime_goal_candidates: Array<Record<string, unknown>>;
+  credited_scorer_evidence: Record<string, unknown> | null;
+  duplicate_header_goal_records_ignored: number;
+  changed_identity_pri_keys: string[];
+  player_overtime_goals_verified: number;
 }
 
 export interface ParsedReplayGame {
@@ -139,6 +185,9 @@ export interface ParsedReplayGame {
   timing: {
     overtime: boolean | null;
     overtime_seconds: number | null;
+    /** New fields are always emitted by v1, optional here for older 0.3.0 responses. */
+    overtime_winner_color?: "blue" | "orange" | null;
+    overtime_goal?: OvertimeGoal | null;
     regulation_clock_seconds: number | null;
     game_clock_seconds: number | null;
     playing_duration_seconds: number | null;
@@ -147,7 +196,7 @@ export interface ParsedReplayGame {
     ended_by: "regulation" | "regulation_clock_expired" | "overtime_goal" | "forfeit" | "incomplete" | "unknown";
     clock_precision_seconds: 1;
     playing_duration_precision_seconds: 0.001;
-    metric_version: "jwrlcs-timing-v2";
+    metric_version: "jwrlcs-timing-v2" | "jwrlcs-timing-v3";
   };
   advanced_metrics: {
     schema_version: "1.0.0";
@@ -163,6 +212,27 @@ export interface ParsedReplayGame {
         metric: "demolitions_inflicted" | "demolitions_taken";
         recorded_counter: number;
         attributed_gameplay_events: number;
+      }>;
+      /** Added by jwrlcs-demolitions-v3; excluded collisions, never official demos. */
+      recorded_demo_counter_scope_differences?: Array<{
+        replay_player_name: string;
+        metric: "demolitions_inflicted" | "demolitions_taken";
+        recorded_counter: number;
+        attributed_gameplay_events: number;
+        corroborated_post_goal_events: number;
+      }>;
+      post_goal_counter_evidence?: Array<{
+        replay_seconds: number;
+        phase: "PostGoalScored";
+        attacker_player_name: string;
+        victim_player_name: string;
+        attacker_pri_key: string;
+        victim_pri_key: string;
+        attacker_car_key: string;
+        victim_car_key: string;
+        inflicted_counter: number;
+        taken_counter: number;
+        official_event_counted: false;
       }>;
       repeated_demolition_updates_ignored: number;
       non_gameplay_demolition_updates_ignored: number;
@@ -191,6 +261,8 @@ export interface ParsedReplayGame {
         stop_countdown_signal_interval_seconds: number | null;
         diagnostic_only: true;
       };
+      /** Private audit evidence; never include in public snapshots. */
+      overtime?: OvertimeDiagnostics | null;
     } | null;
   };
   players: ReplayPlayer[];

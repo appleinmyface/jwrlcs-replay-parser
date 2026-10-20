@@ -1,3 +1,5 @@
+> Overtime update: [OVERTIME_INTEGRATION.md](OVERTIME_INTEGRATION.md) is authoritative for the additive `jwrlcs-overtime-v1` fields, stricter availability rules, and current fixture limitations. No new database import fields were deployed.
+
 # JWRLCS replay-parser 0.3.0 integration contract
 
 ## Compatibility and provenance
@@ -5,7 +7,7 @@
 - Endpoint and authentication are unchanged: authenticated verified administrators call `POST /parse-series` with replay files as multipart form data.
 - `contract_version` and every `games[].parser_version` are `0.3.0`.
 - Parser engine: vendored `@jwrlcs/boxcars-wasm` `0.1.0`, backed by unmodified released Rust `boxcars` `0.12.0`.
-- Metric versions: `jwrlcs-scouting-v1`, `jwrlcs-demolitions-v2`, and `jwrlcs-timing-v2`.
+- Metric versions: `jwrlcs-scouting-v1`, `jwrlcs-demolitions-v3`, `jwrlcs-overtime-v1`, and `jwrlcs-timing-v3`.
 - The five legacy fields at `games[].players[].statistics` are unchanged and remain direct replay-header values.
 - A numeric `0` is a recorded zero. `null` means unavailable, unsupported, or insufficiently verified. Consumers must not coerce new nullable statistics to zero.
 - Availability is per game and per player. A mixed-format series has no series-wide claim that every metric is verified.
@@ -124,7 +126,7 @@ Keep unassigned/unresolved rows available for explicit review. Do not automatica
 
 If any gameplay demo cannot be attributed to both stable identities, all demo totals for that game remain `null`. This prevents a partial total from looking complete. Self-demolition events are withheld and warned rather than assigned to the wrong player.
 
-If observed game-recorded `MatchDemolishes`/`MatchTimesDemolished` counters disagree with attributed events, all official totals remain null with `DEMOLITION_COUNTER_MISMATCH`. Missing counter fields are not interpreted as zero. `diagnostics.demolition_events_detected` remains a diagnostic candidate count, and `diagnostics.recorded_demo_counter_mismatches[]` reports `replay_player_name`, `metric`, `recorded_counter`, and `attributed_gameplay_events`. Counters are not substituted for event counts. Accounts with no observed car also have null demos instead of fabricated zeroes.
+If observed game-recorded `MatchDemolishes`/`MatchTimesDemolished` counters have an unexplained difference from attributed events, all official totals remain null with `DEMOLITION_COUNTER_MISMATCH`. Version `jwrlcs-demolitions-v3` distinguishes strictly corroborated post-goal counter scope: an ordinary unique `DemolishExtended` collision in `PostGoalScored`, with exact attacker/victim PRI attribution and both expected counter updates in that same frame, may explain a difference. Such a collision remains excluded from official Active-phase counts; `DEMOLITION_COUNTER_SCOPE_DIFFERENCE` and the optional `diagnostics.recorded_demo_counter_scope_differences` / `post_goal_counter_evidence` arrays preserve the evidence. Missing or delayed counter proof, goal explosions, self-demolitions, and replay playback never qualify. Unused unassigned header rows do not block fully covered network participants; ambiguous car-owner identities still do. `ps4` headers compare canonically with network `PlayStation`, without rewriting legacy response platform/account fields. Missing counter fields are not interpreted as zero. `diagnostics.demolition_events_detected` remains a diagnostic candidate count, and `diagnostics.recorded_demo_counter_mismatches[]` reports `replay_player_name`, `metric`, `recorded_counter`, and `attributed_gameplay_events`. Counters are not substituted for event counts. Accounts with no observed car also have null demos instead of fabricated zeroes.
 
 ### Timing
 
@@ -140,7 +142,7 @@ If observed game-recorded `MatchDemolishes`/`MatchTimesDemolished` counters disa
 | `games[].timing.ended_by` | string | `regulation`, `regulation_clock_expired`, `overtime_goal`, `forfeit`, `incomplete`, or `unknown`. |
 | `games[].timing.clock_precision_seconds` | number | `1`. |
 | `games[].timing.playing_duration_precision_seconds` | number | `0.001`; this is output rounding, while replay frame sampling remains the real measurement limit. |
-| `games[].timing.metric_version` | string | `jwrlcs-timing-v2`. |
+| `games[].timing.metric_version` | string | `jwrlcs-timing-v3`. |
 
 The service never uses total replay timeline length as playing duration. An absent overtime attribute is not proof of regulation, even if the scoreboard header is decisive and a zero-clock sample exists. A forfeit or terminal state can establish how the game ended, but it does not establish an authoritative playing-duration definition. Countdown and goal-replay intervals are excluded from active-phase diagnostics; these diagnostics still include kickoff movement while the clock is stopped.
 
