@@ -8,7 +8,7 @@ const KNOWN_NON_PLAYING_STATES = new Set([
 ]);
 
 export const SCOUTING_METRIC_VERSION = "jwrlcs-scouting-v1";
-export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v2";
+export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v3";
 export const TIMING_METRIC_VERSION = "jwrlcs-timing-v2";
 
 const DEFERRED_REASONS = {
@@ -34,6 +34,13 @@ function normalizeName(value) {
 
 function normalizePlatform(value) {
   return String(value ?? "").trim().toLocaleLowerCase("en-US") || "unknown";
+}
+
+// Header OnlinePlatform_PS4 and network UniqueId.PlayStation represent the
+// same platform. Compare canonically without rewriting legacy response IDs.
+function matchingPlatform(value) {
+  const platform = normalizePlatform(value);
+  return platform === "ps4" ? "playstation" : platform;
 }
 
 function teamColorFromActor(actor) {
@@ -602,12 +609,15 @@ export function analyzeNetworkReplay(decoded, players) {
   const registry = createActorRegistry(objects);
   const timing = createTimingAnalyzer(decoded);
   const demolitionEvents = [];
+  const postGoalCollisionCandidates = [];
+  const seenPostGoalVictims = new Set();
   const seenVictimGenerations = new Set();
   let repeatedDemolitionUpdates = 0;
   let excludedNonGameplayDemolitions = 0;
   let selfDemolitionEvents = 0;
 
   for (const frame of frames) {
+    const counterChanges = new Map();
     for (const newActor of frame.new_actors ?? []) registry.register(newActor, frame.time);
 
     for (const update of frame.updated_actors ?? []) {
@@ -640,9 +650,15 @@ export function analyzeNetworkReplay(decoded, players) {
         }
       } else if (objectName === "TAGame.PRI_TA:MatchDemolishes"
           && Number.isInteger(update.attribute?.Int) && update.attribute.Int >= 0) {
+        counterChanges.set(`${actor.key}:inflicted`, {
+          before: actor.recordedDemosInflicted, value: update.attribute.Int,
+        });
         actor.recordedDemosInflicted = Math.max(actor.recordedDemosInflicted ?? 0, update.attribute.Int);
       } else if (objectName === "TAGame.PRI_TA:MatchTimesDemolished"
           && Number.isInteger(update.attribute?.Int) && update.attribute.Int >= 0) {
+        counterChanges.set(`${actor.key}:taken`, {
+          before: actor.recordedDemosTaken, value: update.attribute.Int,
+        });
         actor.recordedDemosTaken = Math.max(actor.recordedDemosTaken ?? 0, update.attribute.Int);
       }
     }
@@ -650,13 +666,36 @@ export function analyzeNetworkReplay(decoded, players) {
     for (const update of frame.updated_actors ?? []) {
       const event = demolitionActors(update.attribute);
       if (!event) continue;
-      if (timing.getStateName() !== ACTIVE_STATE) {
-        excludedNonGameplayDemolitions += 1;
-        continue;
-      }
       const attackerActor = event.attacker === null ? null : registry.current(event.attacker);
       const victimActor = event.victim === null ? null : registry.current(event.victim);
       const victimGeneration = victimActor?.key ?? null;
+      if (timing.getStateName() !== ACTIVE_STATE) {
+        excludedNonGameplayDemolitions += 1;
+        const raw = update.attribute.DemolishExtended;
+        const attackerPri = raw?.attacker_pri?.active
+          ? registry.current(raw.attacker_pri.actor) : null;
+        // These remain EXCLUDED events. Recognize a counter-scope difference
+        // only for one uniquely attributed ordinary post-goal collision, with
+        // both exact counter updates in the same frame. Goal explosions,
+        // replays, repeats, missing counters and self-demolitions cannot qualify.
+        if (timing.getStateName() === "PostGoalScored"
+            && raw?.self_demolish === false && raw.self_demo?.active === false
+            && raw.goal_explosion_owner?.active === false
+            && attackerActor?.lastPriActorKey && victimActor?.lastPriActorKey
+            && attackerPri?.key === attackerActor.lastPriActorKey
+            && victimGeneration && !seenVictimGenerations.has(victimGeneration)
+            && !seenPostGoalVictims.has(victimGeneration)) {
+          seenPostGoalVictims.add(victimGeneration);
+          postGoalCollisionCandidates.push({
+            time: frame.time, attackerPriKey: attackerActor.lastPriActorKey,
+            victimPriKey: victimActor.lastPriActorKey,
+            attackerCarKey: attackerActor.key, victimCarKey: victimGeneration,
+            inflictedCounter: counterChanges.get(`${attackerActor.lastPriActorKey}:inflicted`),
+            takenCounter: counterChanges.get(`${victimActor.lastPriActorKey}:taken`),
+          });
+        }
+        continue;
+      }
       if (victimGeneration && seenVictimGenerations.has(victimGeneration)) {
         repeatedDemolitionUpdates += 1;
         continue;
@@ -682,7 +721,7 @@ export function analyzeNetworkReplay(decoded, players) {
   const matches = players.map((player) => {
     const stableMatch = player.platform_user_id
       ? networkPlayers.find((actor) =>
-        actor.identity.platform === player.platform
+        actor.identity.platform === matchingPlatform(player.platform)
         && actor.identity.platform_user_id === player.platform_user_id,
       )
       : null;
@@ -692,7 +731,7 @@ export function analyzeNetworkReplay(decoded, players) {
     const fallbackCandidates = player.platform_user_id ? [] : networkPlayers.filter((actor) =>
       normalizeName(actor.playerName) === normalizeName(player.replay_name)
       && player.team_color !== null && actor.teamColors.has(player.team_color)
-      && actor.identity.platform === player.platform,
+      && actor.identity.platform === matchingPlatform(player.platform),
     );
     const stableKeys = new Set(fallbackCandidates.map((actor) => actor.identity.stable_key));
     return stableMatch ?? (stableKeys.size === 1 ? fallbackCandidates[0] : null);
@@ -740,24 +779,71 @@ export function analyzeNetworkReplay(decoded, players) {
   const duplicateHeaderAccounts = matches.some((actor, index) => actor?.identity
     && matches.some((other, otherIndex) => otherIndex !== index
       && other?.identity?.stable_key === actor.identity.stable_key));
-  const allPlayersResolved = matches.every(Boolean) && !duplicateHeaderAccounts;
-  // Game-recorded counters are an independent input to the event-counting
-  // algorithm, not external ground truth. A mismatch means event coverage is
-  // incomplete or its phase semantics need review. Do not substitute counter
-  // values, manufacture missing events, or publish a partial total.
+  const observedCarOwners = priActors.filter((actor) => actor.carGenerations.size > 0);
+  const participatingIdentitiesResolved = observedCarOwners.length > 0
+    && observedCarOwners.every((actor) => actor.identity && priToPlayer.has(actor.key));
+  const unresolvedAssignedHeader = players.some((player, index) => !matches[index]
+    && (player.team_color !== null
+      || Object.values(player.statistics ?? {}).some((value) => value > 0)));
+  // An unused/unassigned header row does not invalidate fully mapped network
+  // participants. Keep its own participation unknown unless a PRI was matched.
+  // A real car with an unresolved owner or an ambiguous assigned row still blocks.
+  const allPlayersResolved = participatingIdentitiesResolved
+    && !unresolvedAssignedHeader && !duplicateHeaderAccounts;
+
+  const scopedOutInflicted = players.map(() => 0);
+  const scopedOutTaken = players.map(() => 0);
+  const postGoalCounterEvidence = [];
+  for (const event of postGoalCollisionCandidates) {
+    const attackerIndex = priToPlayer.get(event.attackerPriKey);
+    const victimIndex = priToPlayer.get(event.victimPriKey);
+    if (attackerIndex === undefined || victimIndex === undefined || attackerIndex === victimIndex) continue;
+    const expectedInflicted = demolitionEvents.filter((item) => !item.selfDemolition
+      && item.time <= event.time && priToPlayer.get(item.attackerPriKey) === attackerIndex
+      && priToPlayer.has(item.victimPriKey)).length + scopedOutInflicted[attackerIndex] + 1;
+    const expectedTaken = demolitionEvents.filter((item) => !item.selfDemolition
+      && item.time <= event.time && priToPlayer.get(item.victimPriKey) === victimIndex
+      && priToPlayer.has(item.attackerPriKey)).length + scopedOutTaken[victimIndex] + 1;
+    const corroborates = (change, expected) => change && change.value === expected
+      && (change.before === null ? change.value === 1 : change.value === change.before + 1);
+    if (!corroborates(event.inflictedCounter, expectedInflicted)
+        || !corroborates(event.takenCounter, expectedTaken)) continue;
+    scopedOutInflicted[attackerIndex] += 1;
+    scopedOutTaken[victimIndex] += 1;
+    postGoalCounterEvidence.push({
+      replay_seconds: roundSeconds(event.time), phase: "PostGoalScored",
+      attacker_player_name: players[attackerIndex].replay_name,
+      victim_player_name: players[victimIndex].replay_name,
+      attacker_pri_key: event.attackerPriKey, victim_pri_key: event.victimPriKey,
+      attacker_car_key: event.attackerCarKey, victim_car_key: event.victimCarKey,
+      inflicted_counter: event.inflictedCounter.value, taken_counter: event.takenCounter.value,
+      official_event_counted: false,
+    });
+  }
+  // Game-recorded counters are another replay signal, not external ground
+  // truth. They can include the strictly corroborated excluded collision above.
+  // Any remaining mismatch withholds totals. Never substitute counters for
+  // events, count a post-goal event officially, or manufacture a missing event.
   const recordedCounterMismatches = [];
+  const recordedCounterScopeDifferences = [];
   participantActors.forEach((actors, index) => {
-    for (const [field, key, eventCount] of [
-      ["recordedDemosInflicted", "demolitions_inflicted", inflicted[index]],
-      ["recordedDemosTaken", "demolitions_taken", taken[index]],
+    for (const [field, key, eventCount, scopedOut] of [
+      ["recordedDemosInflicted", "demolitions_inflicted", inflicted[index], scopedOutInflicted[index]],
+      ["recordedDemosTaken", "demolitions_taken", taken[index], scopedOutTaken[index]],
     ]) {
       const values = actors.map((actor) => actor[field]).filter((value) => value !== null);
-      if (values.length && Math.max(...values) !== eventCount) {
+      if (values.length && Math.max(...values) !== eventCount + scopedOut) {
         recordedCounterMismatches.push({
           replay_player_name: players[index].replay_name,
           metric: key,
           recorded_counter: Math.max(...values),
           attributed_gameplay_events: eventCount,
+        });
+      } else if (values.length && scopedOut > 0) {
+        recordedCounterScopeDifferences.push({
+          replay_player_name: players[index].replay_name, metric: key,
+          recorded_counter: Math.max(...values), attributed_gameplay_events: eventCount,
+          corroborated_post_goal_events: scopedOut,
         });
       }
     }
@@ -766,6 +852,13 @@ export function analyzeNetworkReplay(decoded, players) {
     && recordedCounterMismatches.length === 0;
   const demolitionStatus = demolitionsVerified ? "verified" : "unavailable";
   const warnings = [];
+  if (recordedCounterScopeDifferences.length) {
+    warnings.push(warning(
+      "DEMOLITION_COUNTER_SCOPE_DIFFERENCE",
+      "Game-recorded counters include a corroborated post-goal collision excluded by the Active-phase demolition metric; official totals count Active-phase events only.",
+      { differences: recordedCounterScopeDifferences, evidence: postGoalCounterEvidence },
+    ));
+  }
   if (recordedCounterMismatches.length) {
     warnings.push(warning(
       "DEMOLITION_COUNTER_MISMATCH",
@@ -776,11 +869,22 @@ export function analyzeNetworkReplay(decoded, players) {
   if (duplicateHeaderAccounts) {
     warnings.push(warning("DUPLICATE_HEADER_ACCOUNT", "Multiple scoreboard rows identify the same account; keep them for explicit review and withhold demolition totals."));
   }
-  if (!allPlayersResolved) {
+  if (matches.some((item) => !item)) {
     warnings.push(warning(
       "NETWORK_PLAYER_IDENTITY_UNRESOLVED",
-      "At least one scoreboard player could not be matched to a stable network account identifier; demolition statistics remain null.",
-      { unmatched_player_count: matches.filter((item) => !item).length },
+      allPlayersResolved
+        ? "An unmatched header row is retained for review; all observed participating car identities are covered independently."
+        : "At least one participating or assigned player could not be matched to a stable network account identifier; demolition statistics remain null.",
+      { unmatched_player_count: matches.filter((item) => !item).length,
+        participating_identity_coverage_complete: participatingIdentitiesResolved },
+    ));
+  }
+  if (!participatingIdentitiesResolved && observedCarOwners.length > 0) {
+    warnings.push(warning(
+      "NETWORK_PARTICIPANT_IDENTITY_UNRESOLVED",
+      "An observed participating car owner lacks a unique stable scoreboard-account mapping; complete demolition attribution remains unavailable.",
+      { unmatched_participating_pri_keys: observedCarOwners
+        .filter((actor) => !actor.identity || !priToPlayer.has(actor.key)).map((actor) => actor.key) },
     ));
   }
   if (unresolvedDemolitionEndpoints > 0) {
@@ -892,6 +996,8 @@ export function analyzeNetworkReplay(decoded, players) {
         demolition_events_counted: demolitionsVerified ? demolitionEvents.length : null,
         demolition_events_detected: demolitionEvents.length,
         recorded_demo_counter_mismatches: recordedCounterMismatches,
+        recorded_demo_counter_scope_differences: recordedCounterScopeDifferences,
+        post_goal_counter_evidence: postGoalCounterEvidence,
         repeated_demolition_updates_ignored: repeatedDemolitionUpdates,
         non_gameplay_demolition_updates_ignored: excludedNonGameplayDemolitions,
         unresolved_demolition_events: unresolvedDemolitionEndpoints,
