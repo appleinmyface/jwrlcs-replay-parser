@@ -8,7 +8,7 @@ const KNOWN_NON_PLAYING_STATES = new Set([
 ]);
 
 export const SCOUTING_METRIC_VERSION = "jwrlcs-scouting-v1";
-export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v3";
+export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v4";
 export const TIMING_METRIC_VERSION = "jwrlcs-timing-v2";
 
 const DEFERRED_REASONS = {
@@ -36,11 +36,11 @@ function normalizePlatform(value) {
   return String(value ?? "").trim().toLocaleLowerCase("en-US") || "unknown";
 }
 
-// Header OnlinePlatform_PS4 and network UniqueId.PlayStation represent the
-// same platform. Compare canonically without rewriting legacy response IDs.
+// Header OnlinePlatform_PS4/Dingo and network UniqueId.PlayStation/Xbox
+// represent the same platforms. Compare without rewriting response IDs.
 function matchingPlatform(value) {
   const platform = normalizePlatform(value);
-  return platform === "ps4" ? "playstation" : platform;
+  return platform === "ps4" ? "playstation" : platform === "dingo" ? "xbox" : platform;
 }
 
 function teamColorFromActor(actor) {

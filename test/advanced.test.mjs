@@ -207,3 +207,77 @@ test("every timing metric has explicit availability even without network frames"
     assert.equal(result.advanced_metrics.metric_availability[field].status, "unavailable");
   }
 });
+
+function aliasFixture({ headerPlatform = "dingo", networkPlatform = "Xbox",
+  headerId = "2535439024683935", networkId = headerId, networkName = "Renamed",
+  duplicateHeader = false } = {}) {
+  const players = [
+    { replay_name: "ABC123EBR", platform: headerPlatform, platform_user_id: headerId, team_color: "blue" },
+    { replay_name: "Bravo", platform: "steam", platform_user_id: "200", team_color: "orange" },
+  ];
+  if (duplicateHeader) players.push({ ...players[0] });
+  const decoded = {
+    objects, names: ["Active"], properties: {},
+    network_frames: { frames: [
+      { time: 0,
+        new_actors: [actor(1, 2), actor(2, 3), actor(10, 0), actor(11, 0), actor(20, 1), actor(21, 1)],
+        updated_actors: [
+          update(99, 8, { Int: 0 }),
+          update(10, 4, { String: networkName }),
+          update(10, 5, { UniqueId: { remote_id: { [networkPlatform]: networkId } } }),
+          update(10, 6, active(1)),
+          update(11, 5, { UniqueId: { remote_id: { Steam: "200" } } }),
+          update(11, 6, active(2)),
+          update(20, 7, active(10)), update(21, 7, active(11)),
+        ], deleted_actors: [],
+      },
+      { time: 1, new_actors: [], updated_actors: [update(99, 9, demo(20, 21))], deleted_actors: [] },
+    ] },
+  };
+  return { decoded, players };
+}
+
+test("Dingo and Xbox match exact stable IDs without requiring matching display names", () => {
+  for (const headerPlatform of ["dingo", "xbox"]) {
+    const { decoded, players } = aliasFixture({ headerPlatform });
+    const before = structuredClone(players);
+    const result = analyzeNetworkReplay(decoded, players);
+    assert.equal(result.advanced_metrics.diagnostics.player_identities_resolved, 2);
+    assert.equal(result.advanced_metrics.diagnostics.unresolved_demolition_events, 0);
+    assert.equal(result.advanced_metrics.diagnostics.demolition_events_counted, 1);
+    assert.deepEqual(result.advanced_metrics.diagnostics.recorded_demo_counter_mismatches, []);
+    assert.deepEqual(result.playerResults.map((p) => [
+      p.advanced_statistics.demolitions_inflicted, p.advanced_statistics.demolitions_taken,
+    ]), [[1, 0], [0, 1]]);
+    assert.deepEqual(players, before);
+  }
+});
+
+test("Dingo/Xbox alias never substitutes a differing stable ID based on the same name", () => {
+  const { decoded, players } = aliasFixture({ networkId: "2535439024683936", networkName: "ABC123EBR" });
+  const result = analyzeNetworkReplay(decoded, players);
+  assert.equal(result.playerResults[0].identity, null);
+  assert.equal(result.advanced_metrics.diagnostics.player_identities_resolved, 1);
+  assert.ok(result.advanced_metrics.diagnostics.unresolved_demolition_events > 0);
+  assert.equal(result.advanced_metrics.diagnostics.demolition_events_counted, null);
+  assert.equal(result.playerResults[0].advanced_statistics.demolitions_inflicted, null);
+  assert.equal(result.playerResults[1].advanced_statistics.demolitions_taken, null);
+});
+
+test("PS4 and PlayStation retain exact-ID alias matching", () => {
+  for (const headerPlatform of ["ps4", "playstation"]) {
+    const { decoded, players } = aliasFixture({ headerPlatform, networkPlatform: "PlayStation" });
+    const result = analyzeNetworkReplay(decoded, players);
+    assert.equal(result.advanced_metrics.diagnostics.player_identities_resolved, 2);
+    assert.equal(result.advanced_metrics.diagnostics.unresolved_demolition_events, 0);
+    assert.equal(result.advanced_metrics.diagnostics.demolition_events_counted, 1);
+  }
+});
+
+test("Dingo/Xbox alias preserves duplicate header-account ambiguity safeguards", () => {
+  const { decoded, players } = aliasFixture({ duplicateHeader: true });
+  const result = analyzeNetworkReplay(decoded, players);
+  assert.equal(result.advanced_metrics.diagnostics.demolition_events_counted, null);
+  assert.equal(result.advanced_metrics.metric_availability.demolitions.status, "unavailable");
+  assert.ok(result.playerResults.every((p) => p.advanced_statistics.demolitions_inflicted === null));
+});
