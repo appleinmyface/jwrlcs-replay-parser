@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 const ACTIVE_STATE = "Active";
 const KNOWN_NON_PLAYING_STATES = new Set([
   "Countdown",
@@ -8,7 +10,7 @@ const KNOWN_NON_PLAYING_STATES = new Set([
 ]);
 
 export const SCOUTING_METRIC_VERSION = "jwrlcs-scouting-v1";
-export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v4";
+export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v5";
 export const TIMING_METRIC_VERSION = "jwrlcs-timing-v2";
 
 const DEFERRED_REASONS = {
@@ -167,6 +169,7 @@ function createActorRegistry(objects) {
       carGenerations: new Set(),
       recordedDemosInflicted: null,
       recordedDemosTaken: null,
+      recordedSelfDemolitions: null,
     };
     actors.set(newActor.actor_id, actor);
     histories.set(actor.key, actor);
@@ -222,6 +225,46 @@ function demolitionActors(attribute) {
     };
   }
   return null;
+}
+
+function recordDetachment(detachments, actorKey, previousKey, attribute) {
+  if (attribute?.ActiveActor?.active !== false) {
+    detachments.set(actorKey, null);
+  } else if (!detachments.has(actorKey)) {
+    detachments.set(actorKey, previousKey);
+  }
+}
+
+function isZeroVelocity(vector) {
+  return vector?.x === 0 && vector.y === 0 && vector.z === 0;
+}
+
+function teamDetachmentEvidence(update, victim, registry, carDetachments, teamDetachments, counterChanges) {
+  const raw = update.attribute.DemolishExtended;
+  if (!victim || update.actor_id !== victim.id
+      || raw?.attacker?.active !== false || raw.attacker_pri?.active !== false
+      || raw.self_demolish !== false || raw.self_demo?.active !== false
+      || raw.goal_explosion_owner?.active !== false
+      || !isZeroVelocity(raw.attacker_velocity) || !isZeroVelocity(raw.victim_velocity)) return null;
+
+  const pri = registry.histories.get(carDetachments.get(victim.key));
+  const team = registry.histories.get(teamDetachments.get(pri?.key));
+  const selfCounter = counterChanges.get(`${pri?.key}:self`);
+  // A first observation of one qualifies only on this already-bound PRI's
+  // detachment frame. Counter snapshots on a replacement PRI cannot qualify.
+  if (!pri || registry.current(pri.id) !== pri
+      || !teamColorFromActor(team) || registry.current(team.id) !== team
+      || !selfCounter || selfCounter.value !== (selfCounter.before ?? 0) + 1
+      || counterChanges.has(`${pri.key}:taken`)) return null;
+
+  return {
+    victim_car_key: victim.key,
+    victim_pri_key: pri.key,
+    previous_team_actor_key: team.key,
+    self_demolitions_counter: selfCounter,
+    match_times_demolished_updated: false,
+    raw_attribute: update.attribute,
+  };
 }
 
 function createTimingAnalyzer(decoded) {
@@ -612,12 +655,16 @@ export function analyzeNetworkReplay(decoded, players) {
   const postGoalCollisionCandidates = [];
   const seenPostGoalVictims = new Set();
   const seenVictimGenerations = new Set();
+  const pendingCarRemovals = new Map();
   let repeatedDemolitionUpdates = 0;
   let excludedNonGameplayDemolitions = 0;
   let selfDemolitionEvents = 0;
 
-  for (const frame of frames) {
+  for (const [frameIndex, frame] of frames.entries()) {
     const counterChanges = new Map();
+    const teamDetachments = new Map();
+    const carDetachments = new Map();
+    const removalVictimsByPri = new Map();
     for (const newActor of frame.new_actors ?? []) registry.register(newActor, frame.time);
 
     for (const update of frame.updated_actors ?? []) {
@@ -633,12 +680,15 @@ export function analyzeNetworkReplay(decoded, players) {
           && update.attribute?.UniqueId) {
         actor.identity = uniqueIdentity(update.attribute.UniqueId);
       } else if (objectName === "Engine.PlayerReplicationInfo:Team") {
+        recordDetachment(teamDetachments, actor.key, actor.teamActorKey, update.attribute);
         const teamActorId = activeActorId(update.attribute);
         const teamActor = teamActorId === null ? null : registry.current(teamActorId);
         actor.teamActorKey = teamActor?.key ?? null;
         const color = teamColorFromActor(teamActor);
         if (color) actor.teamColors.add(color);
       } else if (objectName === "Engine.Pawn:PlayerReplicationInfo") {
+        recordDetachment(carDetachments, actor.key, actor.activePriActorKey, update.attribute);
+        if (update.attribute?.ActiveActor?.active !== false) pendingCarRemovals.delete(actor.key);
         const priActorId = activeActorId(update.attribute);
         if (priActorId === null) {
           actor.activePriActorKey = null;
@@ -654,12 +704,27 @@ export function analyzeNetworkReplay(decoded, players) {
           before: actor.recordedDemosInflicted, value: update.attribute.Int,
         });
         actor.recordedDemosInflicted = Math.max(actor.recordedDemosInflicted ?? 0, update.attribute.Int);
-      } else if (objectName === "TAGame.PRI_TA:MatchTimesDemolished"
-          && Number.isInteger(update.attribute?.Int) && update.attribute.Int >= 0) {
-        counterChanges.set(`${actor.key}:taken`, {
-          before: actor.recordedDemosTaken, value: update.attribute.Int,
+      } else if (objectName === "TAGame.PRI_TA:MatchTimesDemolished") {
+        const key = `${actor.key}:taken`;
+        const value = update.attribute?.Int;
+        if (!Number.isInteger(value) || value < 0) {
+          counterChanges.set(key, null);
+          continue;
+        }
+        counterChanges.set(key, {
+          before: actor.recordedDemosTaken, value,
         });
-        actor.recordedDemosTaken = Math.max(actor.recordedDemosTaken ?? 0, update.attribute.Int);
+        actor.recordedDemosTaken = Math.max(actor.recordedDemosTaken ?? 0, value);
+      } else if (objectName === "TAGame.PRI_TA:SelfDemolitions"
+          && Number.isInteger(update.attribute?.Int) && update.attribute.Int >= 0) {
+        const key = `${actor.key}:self`;
+        const change = counterChanges.get(key);
+        if (!change) {
+          counterChanges.set(key, { before: actor.recordedSelfDemolitions, value: update.attribute.Int });
+        } else if (change.value !== update.attribute.Int) {
+          change.value = null;
+        }
+        actor.recordedSelfDemolitions = Math.max(actor.recordedSelfDemolitions ?? 0, update.attribute.Int);
       }
     }
 
@@ -669,6 +734,12 @@ export function analyzeNetworkReplay(decoded, players) {
       const attackerActor = event.attacker === null ? null : registry.current(event.attacker);
       const victimActor = event.victim === null ? null : registry.current(event.victim);
       const victimGeneration = victimActor?.key ?? null;
+      const pendingRemoval = pendingCarRemovals.get(victimGeneration);
+      if (pendingRemoval && (update.actor_id !== pendingRemoval.update.actor_id
+          || update.object_id !== pendingRemoval.update.object_id
+          || !isDeepStrictEqual(update.attribute, pendingRemoval.update.attribute))) {
+        pendingCarRemovals.delete(victimGeneration);
+      }
       if (timing.getStateName() !== ACTIVE_STATE) {
         excludedNonGameplayDemolitions += 1;
         const raw = update.attribute.DemolishExtended;
@@ -702,16 +773,46 @@ export function analyzeNetworkReplay(decoded, players) {
       }
       if (victimGeneration) seenVictimGenerations.add(victimGeneration);
       if (event.selfDemolition) selfDemolitionEvents += 1;
-      demolitionEvents.push({
+      const candidate = {
         time: frame.time,
         variant: event.variant,
         selfDemolition: event.selfDemolition,
         attackerPriKey: attackerActor?.lastPriActorKey ?? null,
         victimPriKey: victimActor?.lastPriActorKey ?? null,
-      });
+      };
+      demolitionEvents.push(candidate);
+
+      // A missing attacker remains unresolved unless the exact victim car
+      // detached from its PRI while that PRI left its team and incremented its
+      // self-demolition counter. Require deletion of the same car generation
+      // without a rebind or conflicting demolition update.
+      if (objects[update.object_id] !== "TAGame.Car_TA:ReplicatedDemolishExtended") continue;
+      const evidence = teamDetachmentEvidence(update, victimActor, registry, carDetachments,
+        teamDetachments, counterChanges);
+      if (!evidence) continue;
+      const previousVictim = removalVictimsByPri.get(evidence.victim_pri_key);
+      if (previousVictim) {
+        // A single counter increment cannot explain two different cars.
+        pendingCarRemovals.delete(previousVictim);
+      } else {
+        removalVictimsByPri.set(evidence.victim_pri_key, victimGeneration);
+        pendingCarRemovals.set(victimGeneration, { candidate, update, evidence: {
+          ...evidence, frame_index: frameIndex, replay_seconds: frame.time,
+        } });
+      }
     }
 
-    for (const actorId of frame.deleted_actors ?? []) registry.remove(actorId);
+    for (const actorId of frame.deleted_actors ?? []) {
+      const victimGeneration = registry.current(actorId)?.key;
+      const removal = pendingCarRemovals.get(victimGeneration);
+      if (removal) {
+        removal.candidate.teamDetachmentRemoval = {
+          ...removal.evidence, car_deleted_replay_seconds: frame.time, official_event_counted: false,
+        };
+        pendingCarRemovals.delete(victimGeneration);
+      }
+      registry.remove(actorId);
+    }
   }
 
   const priActors = [...registry.histories.values()].filter((actor) =>
@@ -760,8 +861,13 @@ export function analyzeNetworkReplay(decoded, players) {
 
   const inflicted = players.map(() => 0);
   const taken = players.map(() => 0);
+  const teamDetachmentRemovalEvidence = [];
   let unresolvedDemolitionEndpoints = 0;
   for (const event of demolitionEvents) {
+    if (event.teamDetachmentRemoval && priToPlayer.has(event.victimPriKey)) {
+      teamDetachmentRemovalEvidence.push(event.teamDetachmentRemoval);
+      continue;
+    }
     if (event.selfDemolition) {
       unresolvedDemolitionEndpoints += 1;
       continue;
@@ -993,11 +1099,13 @@ export function analyzeNetworkReplay(decoded, players) {
         ...deferredMetricAvailability(),
       },
       diagnostics: {
-        demolition_events_counted: demolitionsVerified ? demolitionEvents.length : null,
+        demolition_events_counted: demolitionsVerified
+          ? demolitionEvents.length - teamDetachmentRemovalEvidence.length : null,
         demolition_events_detected: demolitionEvents.length,
         recorded_demo_counter_mismatches: recordedCounterMismatches,
         recorded_demo_counter_scope_differences: recordedCounterScopeDifferences,
         post_goal_counter_evidence: postGoalCounterEvidence,
+        team_detachment_removal_evidence: teamDetachmentRemovalEvidence,
         repeated_demolition_updates_ignored: repeatedDemolitionUpdates,
         non_gameplay_demolition_updates_ignored: excludedNonGameplayDemolitions,
         unresolved_demolition_events: unresolvedDemolitionEndpoints,

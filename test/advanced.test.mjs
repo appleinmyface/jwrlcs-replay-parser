@@ -281,3 +281,165 @@ test("Dingo/Xbox alias preserves duplicate header-account ambiguity safeguards",
   assert.equal(result.advanced_metrics.metric_availability.demolitions.status, "unavailable");
   assert.ok(result.playerResults.every((p) => p.advanced_statistics.demolitions_inflicted === null));
 });
+
+const selfCounter = objects.length;
+const takenCounter = selfCounter + 1;
+const extendedDemo = selfCounter + 2;
+const inactive = { active: false, actor: -1 };
+
+function detachmentFixture() {
+  const { decoded, players } = aliasFixture();
+  decoded.objects = [...objects,
+    "TAGame.PRI_TA:SelfDemolitions",
+    "TAGame.PRI_TA:MatchTimesDemolished",
+    "TAGame.Car_TA:ReplicatedDemolishExtended",
+  ];
+  const frames = decoded.network_frames.frames;
+  const payload = {
+    attacker: { ...inactive },
+    attacker_pri: { ...inactive },
+    self_demo: { ...inactive },
+    self_demolish: false,
+    goal_explosion_owner: { ...inactive },
+    victim: { active: true, actor: 21 },
+    attacker_velocity: { x: 0, y: 0, z: 0 },
+    victim_velocity: { x: 0, y: 0, z: 0 },
+  };
+  const detachments = [
+    update(11, 6, { ActiveActor: inactive }),
+    update(21, 7, { ActiveActor: inactive }),
+    update(11, selfCounter, { Int: 1 }),
+  ];
+  frames[1].updated_actors = [...detachments, update(21, extendedDemo, { DemolishExtended: payload })];
+  frames.push({ time: 2, deleted_actors: [21] });
+  return { decoded, players, frames, detachments, payload };
+}
+
+function assertUnresolvedDemolition({ decoded, players }) {
+  const result = analyzeNetworkReplay(decoded, players);
+  const diagnostics = result.advanced_metrics.diagnostics;
+  assert.equal(diagnostics.unresolved_demolition_events, 1);
+  assert.equal(diagnostics.demolition_events_counted, null);
+  assert.deepEqual(diagnostics.team_detachment_removal_evidence, []);
+  assert.ok(result.warnings.some((w) => w.code === "DEMOLITION_ATTRIBUTION_INCOMPLETE"));
+  assert.ok(result.playerResults.every((p) => p.advanced_statistics.demolitions_inflicted === null
+    && p.advanced_statistics.demolitions_taken === null));
+}
+
+test("retains evidence for a single removal across duplicate updates and counts a reused car generation", () => {
+  const { decoded, players, frames, payload } = detachmentFixture();
+  frames.splice(2, 0, { time: 1.5, updated_actors: [structuredClone(frames[1].updated_actors.at(-1))] });
+  frames[3].deleted_actors.push(11);
+  frames.push({
+    time: 3,
+    new_actors: [actor(11, 0), actor(21, 1)],
+    updated_actors: [
+      update(11, 5, { UniqueId: { remote_id: { Steam: "200" } } }),
+      update(11, 6, active(2)),
+      update(11, selfCounter, { Int: 1 }),
+      update(21, 7, active(11)),
+      update(21, 9, demo(20, 21)),
+      update(11, takenCounter, { Int: 1 }),
+    ],
+  });
+  const result = analyzeNetworkReplay(decoded, players);
+  const diagnostics = result.advanced_metrics.diagnostics;
+  assert.equal(diagnostics.demolition_events_detected, 2);
+  assert.equal(diagnostics.demolition_events_counted, 1);
+  assert.equal(diagnostics.unresolved_demolition_events, 0);
+  assert.equal(diagnostics.repeated_demolition_updates_ignored, 1);
+  assert.deepEqual(diagnostics.recorded_demo_counter_mismatches, []);
+  assert.deepEqual(diagnostics.team_detachment_removal_evidence, [{
+    victim_car_key: "21:1",
+    victim_pri_key: "11:1",
+    previous_team_actor_key: "2:1",
+    self_demolitions_counter: { before: null, value: 1 },
+    match_times_demolished_updated: false,
+    raw_attribute: { DemolishExtended: payload },
+    frame_index: 1,
+    replay_seconds: 1,
+    car_deleted_replay_seconds: 2,
+    official_event_counted: false,
+  }]);
+  assert.deepEqual(result.playerResults.map((p) => [
+    p.advanced_statistics.demolitions_inflicted, p.advanced_statistics.demolitions_taken,
+  ]), [[1, 0], [0, 1]]);
+});
+
+test("a missing attacker does not resolve a demolition with incomplete or contradictory removal evidence", async (t) => {
+  const cases = [
+    ["missing team detachment", ({ frames }) => frames[1].updated_actors.splice(0, 1)],
+    ["missing car detachment", ({ frames }) => frames[1].updated_actors.splice(1, 1)],
+    ["missing self counter", ({ frames }) => frames[1].updated_actors.splice(2, 1)],
+    ["repeated self counter value", ({ frames }) => frames[0].updated_actors.push(update(11, selfCounter, { Int: 1 }))],
+    ["counter on a different PRI", ({ detachments }) => { detachments[2].actor_id = 10; }],
+    ["ordinary victim counter update", ({ frames }) => frames[1].updated_actors.push(update(11, takenCounter, { Int: 1 }))],
+    ["invalid ordinary victim counter update", ({ frames }) => frames[1].updated_actors.push(update(11, takenCounter, { Int: -1 }))],
+    ["missing velocity", ({ payload }) => { delete payload.victim_velocity; }],
+    ["nonzero velocity", ({ payload }) => { payload.victim_velocity.x = 1; }],
+    ["missing car deletion", ({ frames }) => { frames.pop(); }],
+    ["car reattached before deletion", ({ frames }) => {
+      frames.splice(2, 0, { time: 1.5, updated_actors: [update(21, 7, active(11))] });
+    }],
+    ["a deletion of a replacement car", ({ decoded, frames }) => {
+      decoded.objects.push("Archetypes.Car.Car_Replacement");
+      frames[2].new_actors = [actor(21, decoded.objects.length - 1)];
+    }],
+  ];
+  for (const [name, mutate] of cases) {
+    await t.test(name, () => {
+      const fixture = detachmentFixture();
+      mutate(fixture);
+      assertUnresolvedDemolition(fixture);
+    });
+  }
+});
+
+test("a live attacker reference that cannot resolve to a player still blocks verification", () => {
+  const fixture = detachmentFixture();
+  fixture.payload.attacker = { active: true, actor: 80 };
+  fixture.frames[0].new_actors.push(actor(80, 1));
+  assertUnresolvedDemolition(fixture);
+});
+
+test("a conflicting same-generation demolition cannot be hidden as a repeated removal", () => {
+  const fixture = detachmentFixture();
+  fixture.frames.splice(2, 0, { time: 1.5, updated_actors: [update(21, 9, demo(80, 21))] });
+  assertUnresolvedDemolition(fixture);
+});
+
+test("a replacement PRI generation cannot corroborate the detached car's previous owner", () => {
+  const fixture = detachmentFixture();
+  fixture.frames.splice(1, 0, { time: 0.5, deleted_actors: [11] });
+  const removal = fixture.frames[2];
+  removal.new_actors = [actor(11, 0)];
+  removal.updated_actors.unshift(update(11, 5, { UniqueId: { remote_id: { Steam: "200" } } }),
+    update(11, 6, active(2)));
+  assertUnresolvedDemolition(fixture);
+});
+
+test("one self-counter step cannot corroborate two different victim cars", () => {
+  const { decoded, players, frames, payload } = detachmentFixture();
+  frames[0].new_actors.push(actor(22, 1));
+  frames[0].updated_actors.push(update(22, 7, active(11)));
+  frames[1].updated_actors.push(update(22, 7, { ActiveActor: inactive }),
+    update(22, extendedDemo, { DemolishExtended: { ...payload, victim: { active: true, actor: 22 } } }));
+  frames[2].deleted_actors.push(22);
+  const { diagnostics } = analyzeNetworkReplay(decoded, players).advanced_metrics;
+  assert.equal(diagnostics.unresolved_demolition_events, 2);
+  assert.equal(diagnostics.demolition_events_counted, null);
+  assert.deepEqual(diagnostics.team_detachment_removal_evidence, []);
+});
+
+test("a corroborated removal cannot account for an unexplained competitive counter", () => {
+  const { decoded, players, frames } = detachmentFixture();
+  frames[2].updated_actors = [update(11, takenCounter, { Int: 1 })];
+  const result = analyzeNetworkReplay(decoded, players);
+  const diagnostics = result.advanced_metrics.diagnostics;
+  assert.equal(diagnostics.team_detachment_removal_evidence.length, 1);
+  assert.equal(diagnostics.unresolved_demolition_events, 0);
+  assert.equal(diagnostics.demolition_events_counted, null);
+  assert.equal(diagnostics.recorded_demo_counter_mismatches.length, 1);
+  assert.ok(result.warnings.some((w) => w.code === "DEMOLITION_COUNTER_MISMATCH"));
+  assert.ok(result.playerResults.every((p) => p.advanced_statistics.demolitions_taken === null));
+});
