@@ -10,7 +10,7 @@ const KNOWN_NON_PLAYING_STATES = new Set([
 ]);
 
 export const SCOUTING_METRIC_VERSION = "jwrlcs-scouting-v1";
-export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v5";
+export const DEMOLITION_METRIC_VERSION = "jwrlcs-demolitions-v6";
 export const TIMING_METRIC_VERSION = "jwrlcs-timing-v2";
 
 const DEFERRED_REASONS = {
@@ -239,13 +239,20 @@ function isZeroVelocity(vector) {
   return vector?.x === 0 && vector.y === 0 && vector.z === 0;
 }
 
+function isFiniteVelocity(vector) {
+  return [vector?.x, vector?.y, vector?.z].every(Number.isFinite);
+}
+
 function teamDetachmentEvidence(update, victim, registry, carDetachments, teamDetachments, counterChanges) {
   const raw = update.attribute.DemolishExtended;
+  // A detached car can still be moving when removed. Its velocity is not
+  // collision evidence: require the same PRI/team detachments, self-counter
+  // step, absent attacker, and later same-generation deletion below.
   if (!victim || update.actor_id !== victim.id
       || raw?.attacker?.active !== false || raw.attacker_pri?.active !== false
       || raw.self_demolish !== false || raw.self_demo?.active !== false
       || raw.goal_explosion_owner?.active !== false
-      || !isZeroVelocity(raw.attacker_velocity) || !isZeroVelocity(raw.victim_velocity)) return null;
+      || !isZeroVelocity(raw.attacker_velocity) || !isFiniteVelocity(raw.victim_velocity)) return null;
 
   const pri = registry.histories.get(carDetachments.get(victim.key));
   const team = registry.histories.get(teamDetachments.get(pri?.key));

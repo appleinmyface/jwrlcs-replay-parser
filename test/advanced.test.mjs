@@ -366,6 +366,23 @@ test("retains evidence for a single removal across duplicate updates and counts 
   ]), [[1, 0], [0, 1]]);
 });
 
+test("a moving car can be removed when its player leaves the team", () => {
+  const { decoded, players, payload } = detachmentFixture();
+  payload.victim_velocity = { x: -4.24, y: 8.55, z: -0.17 };
+  const result = analyzeNetworkReplay(decoded, players);
+  const diagnostics = result.advanced_metrics.diagnostics;
+  assert.equal(result.advanced_metrics.metric_availability.demolitions.status, "verified");
+  assert.equal(diagnostics.demolition_events_detected, 1);
+  assert.equal(diagnostics.demolition_events_counted, 0);
+  assert.equal(diagnostics.unresolved_demolition_events, 0);
+  assert.deepEqual(diagnostics.recorded_demo_counter_mismatches, []);
+  assert.equal(diagnostics.team_detachment_removal_evidence.length, 1);
+  assert.deepEqual(diagnostics.team_detachment_removal_evidence[0].raw_attribute,
+    { DemolishExtended: payload });
+  assert.ok(result.playerResults.every((p) => p.advanced_statistics.demolitions_inflicted === 0
+    && p.advanced_statistics.demolitions_taken === 0));
+});
+
 test("a missing attacker does not resolve a demolition with incomplete or contradictory removal evidence", async (t) => {
   const cases = [
     ["missing team detachment", ({ frames }) => frames[1].updated_actors.splice(0, 1)],
@@ -376,7 +393,11 @@ test("a missing attacker does not resolve a demolition with incomplete or contra
     ["ordinary victim counter update", ({ frames }) => frames[1].updated_actors.push(update(11, takenCounter, { Int: 1 }))],
     ["invalid ordinary victim counter update", ({ frames }) => frames[1].updated_actors.push(update(11, takenCounter, { Int: -1 }))],
     ["missing velocity", ({ payload }) => { delete payload.victim_velocity; }],
-    ["nonzero velocity", ({ payload }) => { payload.victim_velocity.x = 1; }],
+    ["nonzero attacker velocity", ({ payload }) => { payload.attacker_velocity.x = 1; }],
+    ["non-finite victim velocity", ({ payload }) => { payload.victim_velocity.x = NaN; }],
+    ["infinite victim velocity", ({ payload }) => { payload.victim_velocity.y = Infinity; }],
+    ["incomplete victim velocity", ({ payload }) => { delete payload.victim_velocity.z; }],
+    ["string victim velocity", ({ payload }) => { payload.victim_velocity.x = "0"; }],
     ["missing car deletion", ({ frames }) => { frames.pop(); }],
     ["car reattached before deletion", ({ frames }) => {
       frames.splice(2, 0, { time: 1.5, updated_actors: [update(21, 7, active(11))] });
@@ -386,12 +407,15 @@ test("a missing attacker does not resolve a demolition with incomplete or contra
       frames[2].new_actors = [actor(21, decoded.objects.length - 1)];
     }],
   ];
-  for (const [name, mutate] of cases) {
-    await t.test(name, () => {
-      const fixture = detachmentFixture();
-      mutate(fixture);
-      assertUnresolvedDemolition(fixture);
-    });
+  for (const moving of [false, true]) {
+    for (const [name, mutate] of cases) {
+      await t.test(`${moving ? "moving" : "stationary"}: ${name}`, () => {
+        const fixture = detachmentFixture();
+        if (moving) fixture.payload.victim_velocity = { x: -4.24, y: 8.55, z: -0.17 };
+        mutate(fixture);
+        assertUnresolvedDemolition(fixture);
+      });
+    }
   }
 });
 

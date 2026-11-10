@@ -27,7 +27,7 @@ test("Catalyst–Wheaties verifies all five games and preserves both exclusions"
     const { diagnostics, metric_availability, network_decode_status } = game.advanced_metrics;
     assert.equal(network_decode_status, "success");
     assert.equal(metric_availability.demolitions.status, "verified");
-    assert.equal(metric_availability.demolitions.metric_version, "jwrlcs-demolitions-v5");
+    assert.equal(metric_availability.demolitions.metric_version, "jwrlcs-demolitions-v6");
     assert.equal(diagnostics.unresolved_demolition_events, 0);
     assert.deepEqual(diagnostics.recorded_demo_counter_mismatches, []);
     assert.ok(!game.warnings.some((item) => item.code === "DEMOLITION_ATTRIBUTION_INCOMPLETE"));
